@@ -1,50 +1,40 @@
 package com.osight.monitor.netty;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
-import io.netty.channel.ChannelFutureListener;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.SimpleChannelInboundHandler;
 
 /**
  * @author chenw <a href="mailto:chenw@chsi.com.cn">chen wei</a>
  * @version $Id$
  */
-public class MonitorServerHandler extends ChannelInboundHandlerAdapter {
-    @Override
-    public void channelActive(ChannelHandlerContext ctx) throws Exception {
-        System.out.println("client active");
-        String ret = "hello client\r\n";
-        ByteBuf bb = Unpooled.buffer(ret.length());
-        bb.writeBytes(ret.getBytes());
-        ctx.writeAndFlush(bb);
+public class MonitorServerHandler extends SimpleChannelInboundHandler<String> {
+    public MonitorServerHandler() {
+        super(true);
     }
 
-    @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        ByteBuf buf = (ByteBuf) msg;
-        byte[] req = new byte[buf.readableBytes()];
-        buf.readBytes(req);
-        try {
-            String body = new String(req, "UTF-8");
-            System.out.println("client channel read msg:" + body + "\r\n");
-        } catch (Exception e) {
-            e.printStackTrace();
+
+    protected void channelRead0(ChannelHandlerContext ctx, String msg) throws Exception {
+        String[] array = msg.split("@");
+        String type = array[0];
+        String client = array[1];
+        Channel ch = ClientChannelMap.get(client);
+        if (ch == null) {
+            ch = ctx.channel();
+            ClientChannelMap.add(client, ch);
         }
-        String ret = "tks\r\n";
-        ByteBuf bb = Unpooled.buffer(ret.length());
-        bb.writeBytes(ret.getBytes());
-        ctx.writeAndFlush(bb);
+        if ("0".equals(type)) {
+            ch.writeAndFlush("2@" + client);
+        } else if ("1".equals(type)) {
+            System.out.println("收到客户端发来的消息：" + msg);
+            String json = array[2];
+            ch.writeAndFlush("data is received");
+        }
     }
 
     @Override
-    public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
-        ctx.writeAndFlush(Unpooled.EMPTY_BUFFER).addListener(ChannelFutureListener.CLOSE); //flush掉所有写回的数据 当flush完成后关闭channel
-    }
-
-    @Override
-    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-        super.exceptionCaught(ctx, cause);
-        ctx.close();
+    public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+        super.channelInactive(ctx);
+        ClientChannelMap.remove(ctx.channel());
     }
 }
