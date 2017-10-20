@@ -1,8 +1,9 @@
 package com.osight.monitor.netty;
 
-import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.handler.timeout.IdleState;
+import io.netty.handler.timeout.IdleStateEvent;
 
 /**
  * @author chenw <a href="mailto:chenw@chsi.com.cn">chen wei</a>
@@ -13,28 +14,48 @@ public class MonitorServerHandler extends SimpleChannelInboundHandler<String> {
         super(true);
     }
 
+    @Override
+    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+        if (evt instanceof IdleStateEvent) {
+            IdleState state = ((IdleStateEvent) evt).state();
+            if (state == IdleState.READER_IDLE) {
+                ctx.close();
+            }
+        } else {
+            super.userEventTriggered(ctx, evt);
+        }
+    }
 
     protected void channelRead0(ChannelHandlerContext ctx, String msg) throws Exception {
+        System.out.println("收到客户端发来的消息：" + msg + ",address:" + ctx.channel().remoteAddress());
         String[] array = msg.split("@");
         String type = array[0];
         String client = array[1];
-        Channel ch = ClientChannelMap.get(client);
-        if (ch == null) {
-            ch = ctx.channel();
-            ClientChannelMap.add(client, ch);
-        }
+
         if ("0".equals(type)) {
-            ch.writeAndFlush("2@" + client);
+            ctx.channel().writeAndFlush("2@" + client);
         } else if ("1".equals(type)) {
-            System.out.println("收到客户端发来的消息：" + msg);
             String json = array[2];
-            ch.writeAndFlush("data is received");
+            ctx.channel().writeAndFlush("data is received");
         }
+
+    }
+
+    @Override
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+        super.exceptionCaught(ctx, cause);
+        ctx.close();
     }
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
         super.channelInactive(ctx);
-        ClientChannelMap.remove(ctx.channel());
+        System.out.println("客户端下线：" + ctx.channel().remoteAddress());
+    }
+
+    @Override
+    public void channelActive(ChannelHandlerContext ctx) throws Exception {
+        super.channelActive(ctx);
+        System.out.println("客户端上线：" + ctx.channel().remoteAddress());
     }
 }
